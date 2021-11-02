@@ -34,6 +34,9 @@ def should_continue(message):
 def should_reroll(message):
     return message.reference is not None and clean_text(message).lower() in ['reroll', 'try again']
 
+def should_archive(message):
+    return message.reference is not None and clean_text(message).lower() == 'archive'
+
 # TODO: should have graceful handling for the message not being found
 async def get_thread_text(message, depth=0):
     if message.reference is None or depth >= MAX_DEPTH:
@@ -94,6 +97,18 @@ async def on_message(message):
     if invalid_continue(message) or invalid_reroll(message):
         await message.reply("You need to reply to a message to do that!")
         return
+    elif should_archive(message):
+        parent_id = message.reference.message_id
+        parent_message = await message.channel.fetch_message(parent_id)
+        full_text = await get_thread_text(parent_message)
+
+        server_channels = message.guild.channels
+        archive_channel = next (channel for channel in server_channels if channel.name == 'bot-stories')
+
+        await archive_channel.send(full_text)
+        await message.reply("Story archived in #bot-stories")
+        return
+
 
     content = await get_thread_text(message)
 
