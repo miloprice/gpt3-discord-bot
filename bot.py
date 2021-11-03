@@ -10,7 +10,7 @@ load_dotenv()
 
 # Based on https://realpython.com/how-to-make-a-discord-bot-python/
 
-MAX_DEPTH = 8
+MAX_DEPTH = 20
 
 CMD_ARCHIVE = '!archive'
 CMD_CONTINUE = '!continue'
@@ -72,6 +72,15 @@ There are some special commands as well:
 !reroll (!r) - (in reply to a message) comes up with a new message based on the message's parent.
 """
 
+async def get_message(channel, target_id):
+    cache_message = discord.utils.get(client.cached_messages, id=target_id)
+    if cache_message:
+        print(f"Found message in cache: {target_id}")
+        return cache_message
+    else:
+        return await channel.fetch_message(target_id)
+
+
 # TODO: should have graceful handling for the message not being found
 async def get_thread_text(message, depth=0, is_archive=False):
     if should_instruct(message):
@@ -83,30 +92,27 @@ async def get_thread_text(message, depth=0, is_archive=False):
         return clean_text(message, is_archive)
     # TODO: probably doesn't have to be a special case
     elif message.reference and should_continue(message):
-        parent_id = message.reference.message_id
-        parent_message = await message.channel.fetch_message(parent_id)
+        parent_message = await get_message(message.channel, message.reference.message_id)
 
         return await get_thread_text(parent_message, depth, is_archive)
     elif message.reference and should_reroll(message):
-        parent_id = message.reference.message_id
-        parent_message = await message.channel.fetch_message(parent_id)
+        parent_message = await get_message(message.channel, message.reference.message_id)
 
         # TODO: handle better
         if not parent_message.reference:
             raise "Cannot reroll"
 
-        grandparent_id = parent_message.reference.message_id
-        grandparent_message = await message.channel.fetch_message(grandparent_id)
+        grandparent_message = await get_message(message.channel, parent_message.reference.message_id)
 
         return await get_thread_text(grandparent_message, depth, is_archive)
     else:
-        parent_id = message.reference.message_id
-        parent_message = await message.channel.fetch_message(parent_id)
+        # Message is an ancestor
+        parent_message = await get_message(message.channel, message.reference.message_id)
 
         while should_continue(parent_message):
-            # The message is a user telling the bot to continue; get its parent instead
+            # The message is a user telling the bot to continue; get its ancestors instead until it reaches a bot message
             parent_id = parent_message.reference.message_id
-            parent_message = await message.channel.fetch_message(parent_id)
+            parent_message = await get_message(message.channel, parent_id)
 
         # TODO: find away to allow non-space-joined messages
         return await get_thread_text(parent_message, depth + 1, is_archive) + ' ' + clean_text(message, is_archive)
@@ -144,8 +150,7 @@ async def on_message(message):
         return
     elif should_archive(message):
         # !archive
-        parent_id = message.reference.message_id
-        parent_message = await message.channel.fetch_message(parent_id)
+        parent_message = await get_message(message.channel, message.reference.message_id)
         full_text = await get_thread_text(parent_message, 0, True)
 
         server_channels = message.guild.channels
