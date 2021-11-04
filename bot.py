@@ -114,7 +114,7 @@ async def get_thread_text(message, depth=0, is_archive=False):
             parent_id = parent_message.reference.message_id
             parent_message = await get_message(message.channel, parent_id)
 
-        # TODO: find away to allow non-space-joined messages
+        # TODO: find a way to allow non-space-joined messages
         return await get_thread_text(parent_message, depth + 1, is_archive) + ' ' + clean_text(message, is_archive)
 
 client = discord.Client()
@@ -122,13 +122,6 @@ client = discord.Client()
 @client.event
 async def on_ready():
     print("Ready")
-
-@client.event
-async def on_member_join(member):
-    await member.create_dm()
-    await member.dm_channel.send(
-        f'Hi {member.name}, welcome to my Discord server!'
-    )
 
 @client.event
 async def on_message(message):
@@ -172,6 +165,10 @@ async def on_message(message):
         bot_engine = 'curie'
 
     content = await get_thread_text(message)
+
+    if len(content) == 0:
+        await message.reply("THE END")
+        return
 
     # Log content
     print(f"content ({bot_engine}):")
