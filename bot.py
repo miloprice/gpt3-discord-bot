@@ -9,7 +9,7 @@ load_dotenv()
 
 # Based on https://realpython.com/how-to-make-a-discord-bot-python/
 
-MAX_DEPTH = 20
+MAX_DEPTH = 64
 
 CMD_ARCHIVE = '!archive'
 CMD_CONTINUE = '!continue'
