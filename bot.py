@@ -2,7 +2,6 @@
 import os
 
 import discord
-import random
 from dotenv import load_dotenv
 
 import openai
@@ -18,14 +17,15 @@ CMD_HELP = '!help'
 CMD_INSTRUCT = '!instruct'
 CMD_REROLL = '!reroll'
 
+BOT_NAME = '@SmarterAdult'
+
 TOKEN = os.getenv('DISCORD_TOKEN')
 OPEN_API_KEY = os.getenv('OPENAI_API_KEY')
 openai.api_key = OPEN_API_KEY
-engines = openai.Engine.list()
 
 # TODO: hacky; find a cleaner approach
 def detag_text(message):
-    return message.clean_content.replace('@SmarterAdult ', '').strip()
+    return message.clean_content.replace(f"{BOT_NAME} ", '').strip()
 
 def decommand_text(text):
     return text.replace(CMD_INSTRUCT, '').replace(CMD_INSTRUCT.upper(), '').replace(CMD_INSTRUCT[:2], '').replace(CMD_INSTRUCT[:2].upper(), '').strip()
@@ -59,10 +59,10 @@ def should_help(message):
     return detag_text(message).lower().startswith(CMD_HELP[:2])
 
 def help_text():
-    return """
+    return f"""
 How to use this bot
 
-Tag @SmarterAdult in a message or reply to one of its messages. Writing text prompts the bot to continue the text.
+Tag {BOT_NAME} in a message or reply to one of its messages. Writing text prompts the bot to continue the text.
 
 There are some special commands as well:
 !archive (!a) - (in reply to a message) tells the bot to save the whole story, ending at the message, in the channel #bot-stories (if it exists).
@@ -117,6 +117,21 @@ async def get_thread_text(message, depth=0, is_archive=False):
         # TODO: find a way to allow non-space-joined messages
         return await get_thread_text(parent_message, depth + 1, is_archive) + ' ' + clean_text(message, is_archive)
 
+# Creates an archived version of all messages leading up to the target message
+async def archive_thread(message):
+    parent_message = await get_message(message.channel, message.reference.message_id)
+    full_text = await get_thread_text(parent_message, 0, True)
+
+    server_channels = message.guild.channels
+    archive_channel = next (channel for channel in server_channels if channel.name == 'bot-stories')
+
+    while len(full_text) > 2000:
+        await archive_channel.send(full_text[:1999])
+        full_text = full_text[1999:]
+
+    await archive_channel.send(full_text)
+    await message.reply("Story archived in #bot-stories")
+
 client = discord.Client()
 
 @client.event
@@ -139,22 +154,11 @@ async def on_message(message):
         return
     elif invalid_continue(message) or invalid_reroll(message):
         # Help confused users
-        await message.reply("You need to reply to a message to do that! Use `@SmarterAdult !help` for help.")
+        await message.reply(f"You need to reply to a message to do that! Use `{BOT_NAME} !help` for help.")
         return
     elif should_archive(message):
         # !archive
-        parent_message = await get_message(message.channel, message.reference.message_id)
-        full_text = await get_thread_text(parent_message, 0, True)
-
-        server_channels = message.guild.channels
-        archive_channel = next (channel for channel in server_channels if channel.name == 'bot-stories')
-
-        while len(full_text) > 2000:
-            await archive_channel.send(full_text[:1999])
-            full_text = full_text[1999:]
-
-        await archive_channel.send(full_text)
-        await message.reply("Story archived in #bot-stories")
+        await archive_thread(message)
         return
 
     global bot_engine
@@ -165,10 +169,6 @@ async def on_message(message):
         bot_engine = 'curie'
 
     content = await get_thread_text(message)
-
-    if len(content) == 0:
-        await message.reply("THE END")
-        return
 
     # Log content
     print(f"content ({bot_engine}):")
