@@ -58,6 +58,7 @@ def decommand_content(content, message_args):
 def clean_text(message, message_args, is_archive=False):
     content = detag_content(message.clean_content)
     content = decommand_content(content, message_args)
+    content = content.strip()
     # cleaned_text = decommand_text(detag_text(message), message_args)
     # Bold text if a human wrote it (kind of hacky)
     if is_archive and message.author != client.user:
