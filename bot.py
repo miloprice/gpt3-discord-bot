@@ -13,10 +13,12 @@ MAX_DEPTH = 64
 MAX_BEST_OF = 3
 
 CMD_ARCHIVE = {'!archive'}
-CMD_CONTINUE = {'continue', 'go on', '!continue', '!c'}
+CMD_CONTINUE = {'!continue', '!c'}
 CMD_HELP = {'!help', '!h'}
 CMD_INSTRUCT = {'!instruct', '!i'}
-CMD_REROLL = {'reroll', '!reroll', '!r'}
+CMD_REROLL = {'!reroll', '!r'}
+# One-word unadorned commands for ease of use
+PLAIN_COMMANDS = {'continue', 'reroll', 'archive'}
 
 BOT_NAME = '@SmarterAdult'
 
@@ -26,15 +28,13 @@ openai.api_key = OPEN_API_KEY
 
 def get_args_from_content(content):
     arglist = set()
+    content = detag_content(content).strip()
     msg_words = content.split()
     for word in msg_words:
         if word.startswith('!'):
             arglist.add(word.lower())
-    # dumb hacks, might be a better way to handle this
-    if content.lower() == "continue":
-        arglist.add("!continue")
-    elif content.lower() == "reroll":
-        arglist.add("!reroll")
+    if content.lower() in PLAIN_COMMANDS:
+        arglist.add(f"!{content.lower()}")
     return arglist
 
 def get_args_from_message(message):
@@ -139,11 +139,13 @@ async def get_thread_text(message, depth=0, is_archive=False):
     else:
         # Message is an ancestor
         parent_message = await get_message(message.channel, message.reference.message_id)
+        parent_message_args = get_args_from_message(parent_message)
 
-        while should_continue(message, message_args):
+        while should_continue(parent_message, parent_message_args):
             # The message is a user telling the bot to continue; get its ancestors instead until it reaches a bot message
             parent_id = parent_message.reference.message_id
             parent_message = await get_message(message.channel, parent_id)
+            parent_message_args = get_args_from_message(parent_message)
 
         # TODO: find a way to allow non-space-joined messages
         return await get_thread_text(parent_message, depth + 1, is_archive) + ' ' + clean_text(message, message_args, is_archive)
