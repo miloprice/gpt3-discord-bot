@@ -10,6 +10,7 @@ load_dotenv()
 # Based on https://realpython.com/how-to-make-a-discord-bot-python/
 
 MAX_DEPTH = 64
+MAX_BEST_OF = 3
 
 CMD_ARCHIVE = {'!archive'}
 CMD_CONTINUE = {'continue', 'go on', '!continue', '!c'}
@@ -23,7 +24,6 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 OPEN_API_KEY = os.getenv('OPENAI_API_KEY')
 openai.api_key = OPEN_API_KEY
 
-# TODO: needed?
 def get_args_from_content(content):
     arglist = set()
     msg_words = content.split()
@@ -39,6 +39,13 @@ def get_args_from_content(content):
 
 def get_args_from_message(message):
     return get_args_from_content(message.clean_content)
+
+def get_best_of_count(message, message_args):
+    best_of = 1
+    for n in range(2, MAX_BEST_OF+1):
+        if f"!{n}" in message_args:
+            best_of = n
+    return best_of
 
 def detag_content(content):
     return content.replace(f"{BOT_NAME} ", '').strip()
@@ -200,7 +207,9 @@ async def on_message(message):
     print(f"content ({bot_engine}):")
     print(content)
 
-    completion = openai.Completion.create(engine=bot_engine, prompt=content, max_tokens = 64)
+    best_of = get_best_of_count(message, message_args)
+    print(f"best of {best_of}")
+    completion = openai.Completion.create(engine=bot_engine, prompt=content, max_tokens = 64, best_of = best_of)
 
     # Log response
     print("response:")
