@@ -11,11 +11,11 @@ load_dotenv()
 
 MAX_DEPTH = 64
 
-CMD_ARCHIVE = '!archive'
-CMD_CONTINUE = '!continue'
-CMD_HELP = '!help'
-CMD_INSTRUCT = '!instruct'
-CMD_REROLL = '!reroll'
+CMD_ARCHIVE = {'!archive'}
+CMD_CONTINUE = {'continue', 'go on', '!continue', '!c'}
+CMD_HELP = {'!help', '!h'}
+CMD_INSTRUCT = {'!instruct', '!i'}
+CMD_REROLL = {'reroll', '!reroll', '!r'}
 
 BOT_NAME = '@SmarterAdult'
 
@@ -23,40 +23,61 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 OPEN_API_KEY = os.getenv('OPENAI_API_KEY')
 openai.api_key = OPEN_API_KEY
 
-# TODO: hacky; find a cleaner approach
-def detag_text(message):
-    return message.clean_content.replace(f"{BOT_NAME} ", '').strip()
+# TODO: needed?
+def get_args_from_content(content):
+    arglist = set()
+    msg_words = content.split()
+    for word in msg_words:
+        if word.startswith('!'):
+            arglist.add(word.lower())
+    # dumb hacks, might be a better way to handle this
+    if content.lower() == "continue":
+        arglist.add("!continue")
+    elif content.lower() == "reroll":
+        arglist.add("!reroll")
+    return arglist
 
-def decommand_text(text):
-    return text.replace(CMD_INSTRUCT, '').replace(CMD_INSTRUCT.upper(), '').replace(CMD_INSTRUCT[:2], '').replace(CMD_INSTRUCT[:2].upper(), '').strip()
+def get_args_from_message(message):
+    return get_args_from_content(message.clean_content)
 
-def clean_text(message, is_archive=False):
-    cleaned_text = decommand_text(detag_text(message))
+def detag_content(content):
+    return content.replace(f"{BOT_NAME} ", '').strip()
+
+def decommand_content(content, message_args):
+    for arg in message_args:
+        content = content.replace(arg, '')
+    return content
+
+def clean_text(message, message_args, is_archive=False):
+    content = detag_content(message.clean_content)
+    content = decommand_content(content, message_args)
+    # cleaned_text = decommand_text(detag_text(message), message_args)
     # Bold text if a human wrote it (kind of hacky)
     if is_archive and message.author != client.user:
-        cleaned_text = '**' + cleaned_text + '**'
-    return cleaned_text
+        content = '**' + content + '**'
+    return content
 
-def invalid_continue(message):
-    return message.reference is None and clean_text(message).lower() in ['continue', 'go on', CMD_CONTINUE, CMD_CONTINUE[:2]]
+def invalid_continue(message, message_args):
+    return message.reference is None and message_args.intersection(CMD_CONTINUE)
 
-def invalid_reroll(message):
-    return message.reference is None and clean_text(message).lower() in ['reroll', CMD_REROLL, CMD_REROLL[:2]]
+def invalid_reroll(message, message_args):
+    return message.reference is None and message_args.intersection(CMD_REROLL)
 
-def should_continue(message):
-    return message.reference is not None and clean_text(message).lower() in ['continue', 'go on', CMD_CONTINUE, CMD_CONTINUE[:2]]
+# TODO: room for metaprogramming on these
+def should_continue(message, message_args):
+    return message.reference is not None and message_args.intersection(CMD_CONTINUE)
 
-def should_reroll(message):
-    return message.reference is not None and clean_text(message).lower() in ['reroll', CMD_REROLL, CMD_REROLL[:2]]
+def should_reroll(message, message_args):
+    return message.reference is not None and message_args.intersection(CMD_REROLL)
 
-def should_archive(message):
-    return message.reference is not None and clean_text(message).lower() in ['archive', CMD_ARCHIVE, CMD_ARCHIVE[:2]]
+def should_archive(message, message_args):
+    return message.reference is not None and message_args.intersection(CMD_ARCHIVE)
 
-def should_instruct(message):
-    return detag_text(message).lower().startswith(CMD_INSTRUCT[:2])
+def should_instruct(message, message_args):
+    return message_args.intersection(CMD_INSTRUCT)
 
-def should_help(message):
-    return detag_text(message).lower().startswith(CMD_HELP[:2])
+def should_help(message, message_args):
+    return message_args.intersection(CMD_HELP)
 
 def help_text():
     return f"""
@@ -83,19 +104,21 @@ async def get_message(channel, target_id):
 
 # TODO: should have graceful handling for the message not being found
 async def get_thread_text(message, depth=0, is_archive=False):
-    if should_instruct(message):
+    message_args = get_args_from_message(message)
+
+    if should_instruct(message, message_args):
         # !instruct
         global bot_engine
         bot_engine = 'curie-instruct-beta'
 
     if message.reference is None or (depth >= MAX_DEPTH and not is_archive):
-        return clean_text(message, is_archive)
+        return clean_text(message, message_args, is_archive)
     # TODO: probably doesn't have to be a special case
-    elif message.reference and should_continue(message):
+    elif message.reference and should_continue(message, message_args):
         parent_message = await get_message(message.channel, message.reference.message_id)
 
         return await get_thread_text(parent_message, depth, is_archive)
-    elif message.reference and should_reroll(message):
+    elif message.reference and should_reroll(message, message_args):
         parent_message = await get_message(message.channel, message.reference.message_id)
 
         # TODO: handle better
@@ -109,13 +132,13 @@ async def get_thread_text(message, depth=0, is_archive=False):
         # Message is an ancestor
         parent_message = await get_message(message.channel, message.reference.message_id)
 
-        while should_continue(parent_message):
+        while should_continue(message, message_args):
             # The message is a user telling the bot to continue; get its ancestors instead until it reaches a bot message
             parent_id = parent_message.reference.message_id
             parent_message = await get_message(message.channel, parent_id)
 
         # TODO: find a way to allow non-space-joined messages
-        return await get_thread_text(parent_message, depth + 1, is_archive) + ' ' + clean_text(message, is_archive)
+        return await get_thread_text(parent_message, depth + 1, is_archive) + ' ' + clean_text(message, message_args, is_archive)
 
 # Creates an archived version of all messages leading up to the target message
 async def archive_thread(message):
@@ -147,27 +170,30 @@ async def on_message(message):
     if client.user not in message.mentions:
         return
 
+    message_args = get_args_from_message(message)
     # Handle commands
-    if should_help(message):
+    if should_help(message, message_args):
         # !help
         await message.reply(help_text())
         return
-    elif invalid_continue(message) or invalid_reroll(message):
+    elif invalid_continue(message, message_args) or invalid_reroll(message, message_args):
         # Help confused users
         await message.reply(f"You need to reply to a message to do that! Use `{BOT_NAME} !help` for help.")
         return
-    elif should_archive(message):
+    elif should_archive(message, message_args):
         # !archive
         await archive_thread(message)
         return
 
+    # TODO: hacky; good argument for stateful Message objects
     global bot_engine
-    if should_instruct(message):
+    if should_instruct(message, message_args):
         # !instruct
         bot_engine = 'curie-instruct-beta'
     else:
         bot_engine = 'curie'
 
+    # TODO: probably getting to the point where each message should be a stateful object
     content = await get_thread_text(message)
 
     # Log content
