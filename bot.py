@@ -68,7 +68,7 @@ def clean_text(message, message_args, is_archive=False):
     # cleaned_text = decommand_text(detag_text(message), message_args)
     # Bold text if a human wrote it (kind of hacky)
     if is_archive and message.author != client.user:
-        content = '**' + content + '**'
+        content = ' **' + content + '**'
     return content
 
 def invalid_continue(message, message_args):
