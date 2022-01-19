@@ -23,7 +23,7 @@ PLAIN_COMMANDS = {'continue', 'reroll', 'archive'}
 # Braille space, used for EOM to get around discord EOL stripping
 MESSAGE_END = "\u2800"
 # It's 2000, but need to make space for the EOM char
-DISCORD_MSG_LIMIT = 1999
+DISCORD_MSG_LIMIT = 1998
 
 BOT_NAME = '@SmarterAdult'
 
@@ -226,7 +226,7 @@ async def on_message(message):
 
     response = completion.choices[0].text
 
-    await message.reply(response+MESSAGE_END)
+    await message.reply(MESSAGE_END + response + MESSAGE_END)
 
 
 client.run(TOKEN)
