@@ -20,6 +20,11 @@ CMD_REROLL = {'!reroll', '!r'}
 # One-word unadorned commands for ease of use
 PLAIN_COMMANDS = {'continue', 'reroll', 'archive'}
 
+# Braille space, used for EOM to get around discord EOL stripping
+MESSAGE_END = "\u2800"
+# It's 2000, but need to make space for the EOM char
+DISCORD_MSG_LIMIT = 1999
+
 BOT_NAME = '@SmarterAdult'
 
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -58,6 +63,7 @@ def decommand_content(content, message_args):
 def clean_text(message, message_args, is_archive=False):
     content = detag_content(message.clean_content)
     content = decommand_content(content, message_args)
+    content = content.replace(MESSAGE_END, '')
     content = content.strip()
     # cleaned_text = decommand_text(detag_text(message), message_args)
     # Bold text if a human wrote it (kind of hacky)
@@ -148,7 +154,7 @@ async def get_thread_text(message, depth=0, is_archive=False):
             parent_message_args = get_args_from_message(parent_message)
 
         # TODO: find a way to allow non-space-joined messages
-        return await get_thread_text(parent_message, depth + 1, is_archive) + ' ' + clean_text(message, message_args, is_archive)
+        return await get_thread_text(parent_message, depth + 1, is_archive) + clean_text(message, message_args, is_archive)
 
 # Creates an archived version of all messages leading up to the target message
 async def archive_thread(message):
@@ -158,9 +164,9 @@ async def archive_thread(message):
     server_channels = message.guild.channels
     archive_channel = next (channel for channel in server_channels if channel.name == 'bot-stories')
 
-    while len(full_text) > 2000:
-        await archive_channel.send(full_text[:1999])
-        full_text = full_text[1999:]
+    while len(full_text) > DISCORD_MSG_LIMIT:
+        await archive_channel.send(full_text[:DISCORD_MSG_LIMIT-1])
+        full_text = full_text[DISCORD_MSG_LIMIT-1:]
 
     await archive_channel.send(full_text)
     await message.reply("Story archived in #bot-stories")
@@ -220,7 +226,7 @@ async def on_message(message):
 
     response = completion.choices[0].text
 
-    await message.reply(response)
+    await message.reply(response+MESSAGE_END)
 
 
 client.run(TOKEN)
