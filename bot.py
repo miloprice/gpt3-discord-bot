@@ -68,7 +68,7 @@ def clean_text(message, message_args, is_archive=False):
     # cleaned_text = decommand_text(detag_text(message), message_args)
     # Bold text if a human wrote it (kind of hacky)
     if is_archive and message.author != client.user:
-        content = ' **' + content + '**'
+        content = '**' + content + '**'
     return content
 
 def invalid_continue(message, message_args):
@@ -125,10 +125,7 @@ async def get_thread_text(message, depth=0, is_archive=False):
         global bot_engine
         bot_engine = 'curie-instruct-beta'
 
-    if message.reference is None:
-        # Remove leading space for human messages (this should always be a human message)
-        return clean_text(message, message_args, is_archive).strip
-    elif (depth >= MAX_DEPTH and not is_archive):
+    if message.reference is None or (depth >= MAX_DEPTH and not is_archive):
         return clean_text(message, message_args, is_archive)
     # TODO: probably doesn't have to be a special case
     elif message.reference and should_continue(message, message_args):
@@ -156,6 +153,7 @@ async def get_thread_text(message, depth=0, is_archive=False):
             parent_message = await get_message(message.channel, parent_id)
             parent_message_args = get_args_from_message(parent_message)
 
+        # TODO: find a way to allow non-space-joined messages
         return await get_thread_text(parent_message, depth + 1, is_archive) + clean_text(message, message_args, is_archive)
 
 # Creates an archived version of all messages leading up to the target message
