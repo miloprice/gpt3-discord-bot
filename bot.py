@@ -58,14 +58,16 @@ def detag_content(content):
 
 def decommand_content(content, message_args):
     for arg in message_args:
-        content = content.replace(arg, '')
+        content = content.replace(arg, '').strip()
     return content
 
 def clean_text(message, message_args, is_archive=False):
-    content = detag_content(message.clean_content)
-    content = decommand_content(content, message_args)
+    content = message.clean_content
     content = content.replace(MESSAGE_END, '')
     # Bold text if a human wrote it (kind of hacky)
+    if message.author != client.user:
+        content = detag_content(content)
+        content = decommand_content(content, message_args)
     if is_archive and message.author != client.user:
         content = ' **' + content + '**'
     return content
