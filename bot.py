@@ -1,5 +1,6 @@
 # bot.py
 import os
+import sys
 
 import discord
 from dotenv import load_dotenv
@@ -64,7 +65,6 @@ def clean_text(message, message_args, is_archive=False):
     content = detag_content(message.clean_content)
     content = decommand_content(content, message_args)
     content = content.replace(MESSAGE_END, '')
-    # cleaned_text = decommand_text(detag_text(message), message_args)
     # Bold text if a human wrote it (kind of hacky)
     if is_archive and message.author != client.user:
         content = ' **' + content + '**'
@@ -227,5 +227,19 @@ async def on_message(message):
 
     await message.reply(MESSAGE_END + response + MESSAGE_END)
 
+def run_locally():
+    text = ''
+    while True:
+        next_string = input('> ')
+        print(f"Received: '{next_string}'")
+        text += next_string
+        completion = openai.Completion.create(engine='curie', prompt=text, max_tokens = 64)
+        ai_output = completion.choices[0].text
+        print(f"Output: '{ai_output}'")
+        text += ai_output
 
-client.run(TOKEN)
+
+if len(sys.argv) > 1 and sys.argv[1] == 'local':
+    run_locally()
+else:
+    client.run(TOKEN)
