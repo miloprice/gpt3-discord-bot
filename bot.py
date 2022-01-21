@@ -32,6 +32,53 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 OPEN_API_KEY = os.getenv('OPENAI_API_KEY')
 openai.api_key = OPEN_API_KEY
 
+class DiscordMessage:
+    # TODO: instruct arg
+    # TODO: best_of arg
+    # TODO: continue arg
+
+    def __init__(self, client, message):
+        self.client = client
+        self.message = message
+
+        # TODO: This will need a better strategy - current strategy relies on string stripping
+        if self.is_human():
+            self.args = get_args_from_content(message.clean_content)
+            self.text = clean_text(message, self.args)
+        else:
+            self.args = set()
+            self.text = message.clean_content.replace(MESSAGE_END, '')
+
+    async def get_parent(self):
+        if self.message.reference:
+            parent_message = await get_message(self.message.channel, self.message.reference.message_id)
+            return DiscordMessage(self.client, parent_message)
+        else:
+            return None
+
+    def is_human(self):
+        return self.message.author != self.client.user
+
+    def raw_text(self):
+        # TODO: gsub braille spaces
+        return self.text
+
+    def display_text(self):
+        if self.is_human():
+            return f"**{self.text}**"
+        else:
+            return self.text
+
+    async def get_chain_text(self, display=False):
+        self_text = self.display_text() if display else self.raw_text()
+
+        parent = await self.get_parent()
+        if not parent:
+            return self_text
+
+        return await parent.get_chain_text(display) + self_text
+
+
 def get_args_from_content(content):
     arglist = set()
     content = detag_content(content).strip()
@@ -160,7 +207,7 @@ async def get_thread_text(message, depth=0, is_archive=False):
 # Creates an archived version of all messages leading up to the target message
 async def archive_thread(message):
     parent_message = await get_message(message.channel, message.reference.message_id)
-    full_text = await get_thread_text(parent_message, 0, True)
+    full_text = await DiscordMessage(client, parent_message).get_chain_text(True)
 
     server_channels = message.guild.channels
     archive_channel = next (channel for channel in server_channels if channel.name == 'bot-stories')
@@ -180,6 +227,10 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
+    # TEMP: only respond to dev
+    if message.author.name != 'unclghost':
+        return
+
     # Don't respond to self
     if message.author == client.user:
         return
@@ -199,6 +250,7 @@ async def on_message(message):
         return
     elif should_archive(message, message_args):
         # !archive
+        # TODO: replace with Message-using implementation
         await archive_thread(message)
         return
 
@@ -210,8 +262,7 @@ async def on_message(message):
     else:
         bot_engine = 'curie'
 
-    # TODO: probably getting to the point where each message should be a stateful object
-    content = await get_thread_text(message)
+    content = await DiscordMessage(client, message).get_chain_text()
 
     # Log content
     print(f"content ({bot_engine}):")
