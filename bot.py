@@ -3,6 +3,7 @@ import os
 import sys
 
 import discord
+from discord_slash import SlashCommand, SlashContext
 from dotenv import load_dotenv
 
 import openai
@@ -59,15 +60,20 @@ class DiscordMessage:
     def is_human(self):
         return self.message.author != self.client.user
 
+    # TODO: how should reroll be handled?
+    def should_continue(self):
+        return self.args.intersection(CMD_CONTINUE)
+
     def raw_text(self):
-        # TODO: gsub braille spaces
+        if self.should_continue():
+            return ''
         return self.text
 
     def display_text(self):
-        if self.is_human():
-            return f"**{self.text}**"
+        if self.is_human() and len(self.raw_text()) > 0:
+            return f"**{self.raw_text()}**"
         else:
-            return self.text
+            return self.raw_text()
 
     async def get_chain_text(self, display=False):
         self_text = self.display_text() if display else self.raw_text()
@@ -206,8 +212,12 @@ async def get_thread_text(message, depth=0, is_archive=False):
 
 # Creates an archived version of all messages leading up to the target message
 async def archive_thread(message):
-    parent_message = await get_message(message.channel, message.reference.message_id)
-    full_text = await DiscordMessage(client, parent_message).get_chain_text(True)
+    if message.reference:
+        parent_message = await get_message(message.channel, message.reference.message_id)
+        full_text = await DiscordMessage(client, parent_message).get_chain_text(True)
+    else:
+        # TODO: include prompt text in archived text
+        full_text = await DiscordMessage(client, message).get_chain_text(True)
 
     server_channels = message.guild.channels
     archive_channel = next (channel for channel in server_channels if channel.name == 'bot-stories')
@@ -220,6 +230,7 @@ async def archive_thread(message):
     await message.reply("Story archived in #bot-stories")
 
 client = discord.Client()
+slash = SlashCommand(client, sync_commands=True)
 
 @client.event
 async def on_ready():
@@ -227,10 +238,6 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-    # TEMP: only respond to dev
-    if message.author.name != 'unclghost':
-        return
-
     # Don't respond to self
     if message.author == client.user:
         return
@@ -279,6 +286,66 @@ async def on_message(message):
     response = completion.choices[0].text
 
     await message.reply(MESSAGE_END + response + MESSAGE_END)
+
+@client.event
+async def on_reaction_add(reaction, user):
+    if reaction.emoji == "\U000025B6" or reaction.emoji == "▶️": # Play symbol
+        print("Continuing")
+        # TODO: DRY this
+        content = await DiscordMessage(client, reaction.message).get_chain_text()
+        completion = openai.Completion.create(engine='curie', prompt=content, max_tokens = 64)# Log response
+        print("response:")
+        print(completion.choices)
+
+        response = completion.choices[0].text
+
+        await reaction.message.reply(MESSAGE_END + response + MESSAGE_END)
+    elif reaction.emoji == "\U0001F501": # Repeat symbol
+        print("Rerolling")
+        d_message = DiscordMessage(client, reaction.message)
+        parent = await d_message.get_parent()
+        if not parent:
+            await reaction.message.reply("Can't reroll!")
+            return
+
+        content = await parent.get_chain_text()
+        completion = openai.Completion.create(engine='curie', prompt=content, max_tokens = 64)# Log response
+        print("response:")
+        print(completion.choices)
+
+        response = completion.choices[0].text
+
+        await reaction.message.reply(MESSAGE_END + response + MESSAGE_END)
+    elif reaction.emoji == "\U0001F4BE": # Floppy disk
+        print("Archiving")
+        print(reaction.message.clean_content)
+        await archive_thread(reaction.message)
+    else:
+        print("Got different react:", reaction.emoji.encode('unicode-escape'))
+
+@slash.slash(name="instruct", description="Send a prompt to GPT-3 in Instruct mode (ex: 'Write a story')")
+async def instruct_cmd(ctx: SlashContext, prompt: str, best_of_3: bool=False):
+    bot_engine = 'curie-instruct-beta'
+    completion = openai.Completion.create(engine=bot_engine, prompt=prompt, max_tokens = 64, best_of = (3 if best_of_3 else 1))
+    # Log response
+    print("response:")
+    print(completion.choices)
+
+    response = completion.choices[0].text
+    await ctx.send(MESSAGE_END + response + MESSAGE_END)
+
+@slash.slash(name="continue", description="Send text to GPT-3 in Continue mode (ex: 'My name is')")
+async def continue_cmd(ctx: SlashContext, text: str, best_of_3: bool=False):
+    bot_engine = 'curie'
+
+    print("text:", text)
+    completion = openai.Completion.create(engine=bot_engine, prompt=text, max_tokens = 64, best_of = (3 if best_of_3 else 1))
+    # Log response
+    print("response:")
+    print(completion.choices)
+
+    response = completion.choices[0].text
+    await ctx.send(MESSAGE_END + response + MESSAGE_END)
 
 def run_locally():
     text = ''
