@@ -17,6 +17,7 @@ CMD_ARCHIVE = {'!archive'}
 CMD_CONTINUE = {'!continue', '!c'}
 CMD_HELP = {'!help', '!h'}
 CMD_INSTRUCT = {'!instruct', '!i'}
+CMD_DRAW = {'!draw', '!d'}
 CMD_REROLL = {'!reroll', '!r'}
 # One-word unadorned commands for ease of use
 PLAIN_COMMANDS = {'continue', 'reroll', 'archive'}
@@ -90,6 +91,9 @@ def should_archive(message, message_args):
 
 def should_instruct(message, message_args):
     return message_args.intersection(CMD_INSTRUCT)
+
+def should_draw(message, message_args):
+    return message_args.intersection(CMD_DRAW)
 
 def should_help(message, message_args):
     return message_args.intersection(CMD_HELP)
@@ -202,32 +206,44 @@ async def on_message(message):
         await archive_thread(message)
         return
 
-    # TODO: hacky; good argument for stateful Message objects
-    global bot_engine
-    if should_instruct(message, message_args):
-        # !instruct
-        bot_engine = 'curie-instruct-beta'
+    # TODO: refactor
+    if should_draw(message, message_args):
+        prompt = clean_text(message, message_args)
+        print(f"Request: '{prompt}'")
+        try:
+            image_resp = openai.Image.create(prompt=prompt, n=1, size="512x512")
+            print(image_resp)
+            image_url = image_resp['data'][0]['url']
+            await message.reply(image_url)
+        except openai.error.InvalidRequestError as e:
+            await message.reply(str(e))
     else:
-        bot_engine = 'curie'
+        # TODO: hacky; good argument for stateful Message objects
+        global bot_engine
+        if should_instruct(message, message_args):
+            # !instruct
+            bot_engine = 'curie-instruct-beta'
+        else:
+            bot_engine = 'curie'
 
-    # TODO: probably getting to the point where each message should be a stateful object
-    content = await get_thread_text(message)
+        # TODO: probably getting to the point where each message should be a stateful object
+        content = await get_thread_text(message)
 
-    # Log content
-    print(f"content ({bot_engine}):")
-    print(content)
+        # Log content
+        print(f"content ({bot_engine}):")
+        print(content)
 
-    best_of = get_best_of_count(message, message_args)
-    print(f"best of {best_of}")
-    completion = openai.Completion.create(engine=bot_engine, prompt=content, max_tokens = 64, best_of = best_of)
+        best_of = get_best_of_count(message, message_args) + 2
+        print(f"best of {best_of}")
+        completion = openai.Completion.create(engine=bot_engine, prompt=content, max_tokens = 64, best_of = best_of)
 
-    # Log response
-    print("response:")
-    print(completion.choices)
+        # Log response
+        print("response:")
+        print(completion.choices)
 
-    response = completion.choices[0].text
+        response = completion.choices[0].text
 
-    await message.reply(MESSAGE_END + response + MESSAGE_END)
+        await message.reply(MESSAGE_END + response + MESSAGE_END)
 
 def run_locally():
     text = ''
@@ -235,7 +251,7 @@ def run_locally():
         next_string = input('> ')
         print(f"Received: '{next_string}'")
         text += next_string
-        completion = openai.Completion.create(engine='curie', prompt=text, max_tokens = 64)
+        completion = openai.Completion.create(engine='text-davinci-003', prompt=text, max_tokens = 64)
         ai_output = completion.choices[0].text
         print(f"Output: '{ai_output}'")
         text += ai_output
