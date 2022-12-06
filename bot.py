@@ -2,6 +2,9 @@
 import os
 import sys
 
+import requests
+import tempfile
+
 import discord
 from dotenv import load_dotenv
 
@@ -214,7 +217,13 @@ async def on_message(message):
             image_resp = openai.Image.create(prompt=prompt, n=1, size="512x512")
             print(image_resp)
             image_url = image_resp['data'][0]['url']
-            await message.reply(image_url)
+            image_data = requests.get(image_url).content
+            with tempfile.NamedTemporaryFile(suffix='.png', mode='wb', delete=True) as temp_imagefile:
+                temp_imagefile.write(image_data)
+                temp_imagefile.seek(0)
+                discord_file = discord.File(temp_imagefile.name)
+                await message.reply(file=discord_file)
+
         except openai.error.InvalidRequestError as e:
             await message.reply(str(e))
     else:
