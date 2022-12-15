@@ -233,7 +233,7 @@ async def on_message(message):
             # !instruct
             bot_engine = 'curie-instruct-beta'
         else:
-            bot_engine = 'curie'
+            bot_engine = 'text-davinci-003'
 
         # TODO: probably getting to the point where each message should be a stateful object
         content = await get_thread_text(message)
