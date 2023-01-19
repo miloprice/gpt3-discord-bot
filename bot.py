@@ -227,6 +227,16 @@ async def on_message(message):
         # !archive
         await archive_thread(message)
         return
+    elif should_reroll(message, message_args) and message.reference:
+        # Redraw if this is rerolling an image
+        parent_message = await get_message(message.channel, message.reference.message_id)
+        if parent_message.author == client.user and parent_message.attachments:
+            grandparent_message = await get_message(parent_message.channel, parent_message.reference.message_id)
+            message_args = get_args_from_message(grandparent_message)
+            prompt = clean_text(grandparent_message, message_args)
+            print(f"Rerolling request: '{prompt}'")
+            await reply_with_picture(prompt, grandparent_message)
+
 
     # TODO: refactor
     if should_draw(message, message_args):
@@ -279,7 +289,7 @@ async def on_reaction_add(reaction, user):
             parent_message = await get_message(message.channel, message.reference.message_id)
             message_args = get_args_from_message(parent_message)
             prompt = clean_text(parent_message, message_args)
-            print(f"Request: '{prompt}'")
+            print(f"Rerolling request: '{prompt}'")
             await reply_with_picture(prompt, parent_message)
 
 def run_locally():
