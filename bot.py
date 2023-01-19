@@ -237,7 +237,6 @@ async def on_message(message):
             print(f"Rerolling request: '{prompt}'")
             await reply_with_picture(prompt, grandparent_message)
 
-
     # TODO: refactor
     if should_draw(message, message_args):
         prompt = clean_text(message, message_args)
@@ -284,8 +283,7 @@ async def on_reaction_add(reaction, user):
         return
 
     print(f"Got reaction: {reaction.emoji}")
-    match reaction.emoji:
-        case "\U0001F501" | "\U0001F502" | "\U0001F3B2": # "repeat" or "repeat one" or "game die"
+    if reaction.emoji in ["\U0001F501", "\U0001F502", "\U0001F3B2"]: # "repeat" or "repeat one" or "game die"
             parent_message = await get_message(message.channel, message.reference.message_id)
             message_args = get_args_from_message(parent_message)
             prompt = clean_text(parent_message, message_args)
