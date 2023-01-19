@@ -179,7 +179,26 @@ async def archive_thread(message):
     await archive_channel.send(full_text)
     await message.reply("Story archived in #bot-stories")
 
-client = discord.Client()
+async def reply_with_picture(prompt, message):
+    try:
+        image_resp = openai.Image.create(prompt=prompt, n=1, size="512x512")
+        print(image_resp)
+        image_url = image_resp['data'][0]['url']
+        image_data = requests.get(image_url).content
+        with tempfile.NamedTemporaryFile(suffix='.png', mode='wb', delete=True) as temp_imagefile:
+            temp_imagefile.write(image_data)
+            temp_imagefile.seek(0)
+            discord_file = discord.File(temp_imagefile.name)
+            await message.reply(file=discord_file)
+
+    except openai.error.InvalidRequestError as e:
+        await message.reply(str(e))
+
+
+intents = discord.Intents.default()
+intents.reactions = True
+
+client = discord.Client(intents=intents)
 
 @client.event
 async def on_ready():
@@ -213,19 +232,7 @@ async def on_message(message):
     if should_draw(message, message_args):
         prompt = clean_text(message, message_args)
         print(f"Request: '{prompt}'")
-        try:
-            image_resp = openai.Image.create(prompt=prompt, n=1, size="512x512")
-            print(image_resp)
-            image_url = image_resp['data'][0]['url']
-            image_data = requests.get(image_url).content
-            with tempfile.NamedTemporaryFile(suffix='.png', mode='wb', delete=True) as temp_imagefile:
-                temp_imagefile.write(image_data)
-                temp_imagefile.seek(0)
-                discord_file = discord.File(temp_imagefile.name)
-                await message.reply(file=discord_file)
-
-        except openai.error.InvalidRequestError as e:
-            await message.reply(str(e))
+        await reply_with_picture(prompt, message)
     else:
         # TODO: hacky; good argument for stateful Message objects
         global bot_engine
@@ -253,6 +260,26 @@ async def on_message(message):
         response = completion.choices[0].text
 
         await message.reply(MESSAGE_END + response + MESSAGE_END)
+
+@client.event
+async def on_reaction_add(reaction, user):
+    message = reaction.message
+    # Only respond to reactions to own messages
+    if message.author != client.user:
+        return
+
+    # Only reroll images (for now)
+    if not message.attachments:
+        print(f"Got reaction on text-only message: {reaction.emoji}")
+        return
+
+    match reaction.emoji:
+        case "\U0001F501" | "\U0001F502" | "\U0001F3B2": # "repeat" or "repeat one" or "game die"
+            parent_message = await get_message(message.channel, message.reference.message_id)
+            message_args = get_args_from_message(parent_message)
+            prompt = clean_text(parent_message, message_args)
+            print(f"Request: '{prompt}'")
+            await reply_with_picture(prompt, parent_message)
 
 def run_locally():
     text = ''
