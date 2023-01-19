@@ -273,6 +273,7 @@ async def on_reaction_add(reaction, user):
         print(f"Got reaction on text-only message: {reaction.emoji}")
         return
 
+    print(f"Got reaction: {reaction.emoji}")
     match reaction.emoji:
         case "\U0001F501" | "\U0001F502" | "\U0001F3B2": # "repeat" or "repeat one" or "game die"
             parent_message = await get_message(message.channel, message.reference.message_id)
